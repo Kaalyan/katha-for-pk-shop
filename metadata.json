@@ -1,0 +1,6 @@
+{
+  "name": "Kirana Khata",
+  "description": "Shared multi-owner digital credit ledger (Udhar Khata) for Indian Kirana shops with real-time Firestore sync, payment receipts, reports, and Telugu & English support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

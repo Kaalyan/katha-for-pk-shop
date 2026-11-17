@@ -1,0 +1,425 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- GLOBAL HARDENED HELPERS ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    function isInvitedEmail(shopData) {
+      return request.auth.token.email_verified == true &&
+             request.auth.token.email is string &&
+             request.auth.token.email.lower() in shopData.invitedEmails;
+    }
+
+    function isShopMember(shopId) {
+      return isValidId(shopId) &&
+             exists(/databases/$(database)/documents/shops/$(shopId)) &&
+             request.auth.uid in get(/databases/$(database)/documents/shops/$(shopId)).data.memberUids;
+    }
+
+    function isShopMemberOrJoining(shopId) {
+      return isShopMember(shopId) || (
+        isValidId(shopId) &&
+        existsAfter(/databases/$(database)/documents/shops/$(shopId)) &&
+        request.auth.uid in getAfter(/databases/$(database)/documents/shops/$(shopId)).data.memberUids
+      );
+    }
+
+    function isShopMainAdmin(shopId) {
+      return isValidId(shopId) &&
+             exists(/databases/$(database)/documents/shops/$(shopId)) &&
+             get(/databases/$(database)/documents/shops/$(shopId)).data.mainOwnerUid == request.auth.uid;
+    }
+
+    function isShopMainAdminOrCreating(shopId) {
+      return isShopMainAdmin(shopId) || (
+        isValidId(shopId) &&
+        existsAfter(/databases/$(database)/documents/shops/$(shopId)) &&
+        getAfter(/databases/$(database)/documents/shops/$(shopId)).data.mainOwnerUid == request.auth.uid
+      );
+    }
+
+    function isInvitedToShop(shopId) {
+      return isValidId(shopId) &&
+             request.auth.token.email_verified == true &&
+             request.auth.token.email is string &&
+             exists(/databases/$(database)/documents/shops/$(shopId)) &&
+             request.auth.token.email.lower() in get(/databases/$(database)/documents/shops/$(shopId)).data.invitedEmails;
+    }
+
+    // --- VALIDATION BLUEPRINTS ---
+    function isValidUser(data) {
+      return data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+             data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+             data.language in ['en', 'te'] &&
+             (!('activeShopId' in data) || data.activeShopId == null || (data.activeShopId is string && data.activeShopId.size() <= 128)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidShop(data) {
+      return data.name is string && data.name.size() >= 2 && data.name.size() <= 80 &&
+             data.mainOwnerUid is string && data.mainOwnerUid.size() >= 1 && data.mainOwnerUid.size() <= 128 &&
+             data.mainOwnerEmail is string && data.mainOwnerEmail.size() >= 3 && data.mainOwnerEmail.size() <= 160 &&
+             data.memberUids is list && data.memberUids.size() >= 1 && data.memberUids.size() <= 3 &&
+             data.memberUids[0] is string &&
+             data.invitedEmails is list && data.invitedEmails.size() <= 3 &&
+             (data.invitedEmails.size() == 0 || data.invitedEmails[0] is string) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidMember(data) {
+      return data.shopId is string && data.shopId.size() >= 1 && data.shopId.size() <= 128 &&
+             data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+             data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+             (!('phone' in data) || data.phone == null || (data.phone is string && data.phone.size() <= 24)) &&
+             data.role in ['MAIN_ADMIN', 'OWNER_2', 'OWNER_3'] &&
+             data.active is bool &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidCustomer(data) {
+      return data.shopId is string && data.shopId.size() >= 1 && data.shopId.size() <= 128 &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+             data.phone is string && data.phone.size() >= 5 && data.phone.size() <= 20 &&
+             (!('address' in data) || data.address == null || (data.address is string && data.address.size() <= 200)) &&
+             (!('lastTransactionId' in data) || data.lastTransactionId == null || isValidId(data.lastTransactionId)) &&
+             data.openingBalancePaise is int && data.openingBalancePaise >= 0 && data.openingBalancePaise <= 1000000000 &&
+             data.totalCreditPaise is int && data.totalCreditPaise >= 0 && data.totalCreditPaise <= 1000000000 &&
+             data.totalPaidPaise is int && data.totalPaidPaise >= 0 && data.totalPaidPaise <= 1000000000 &&
+             data.outstandingBalancePaise is int && data.outstandingBalancePaise >= 0 &&
+             data.outstandingBalancePaise == (data.openingBalancePaise + data.totalCreditPaise - data.totalPaidPaise) &&
+             data.createdByUid is string && data.createdByUid.size() >= 1 && data.createdByUid.size() <= 128 &&
+             data.createdByName is string && data.createdByName.size() >= 1 && data.createdByName.size() <= 100 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidTransaction(data) {
+      return data.shopId is string && data.shopId.size() >= 1 && data.shopId.size() <= 128 &&
+             data.customerId is string && isValidId(data.customerId) &&
+             data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 100 &&
+             data.type in ['CREDIT', 'PAYMENT', 'REVERSAL'] &&
+             data.amountPaise is int && data.amountPaise > 0 && data.amountPaise <= 100000000 &&
+             data.description is string && data.description.size() >= 1 && data.description.size() <= 200 &&
+             (!('quantity' in data) || data.quantity == null || (data.quantity is string && data.quantity.size() <= 60)) &&
+             (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 300)) &&
+             (!('paymentMethod' in data) || data.paymentMethod == null || data.paymentMethod in ['CASH', 'UPI', 'OTHER']) &&
+             (!('paymentId' in data) || data.paymentId == null || isValidId(data.paymentId)) &&
+             (!('relatedTransactionId' in data) || data.relatedTransactionId == null || isValidId(data.relatedTransactionId)) &&
+             data.balanceAfterPaise is int && data.balanceAfterPaise >= 0 &&
+             data.status in ['CONFIRMED', 'REVERSED'] &&
+             data.createdByUid is string && data.createdByUid.size() >= 1 && data.createdByUid.size() <= 128 &&
+             data.createdByName is string && data.createdByName.size() >= 1 && data.createdByName.size() <= 100 &&
+             (!('reversedByUid' in data) || data.reversedByUid == null || (data.reversedByUid is string && data.reversedByUid.size() <= 128)) &&
+             (!('reversedByName' in data) || data.reversedByName == null || (data.reversedByName is string && data.reversedByName.size() <= 100)) &&
+             (!('reversalReason' in data) || data.reversalReason == null || (data.reversalReason is string && data.reversalReason.size() >= 1 && data.reversalReason.size() <= 250)) &&
+             (!('reversedAt' in data) || data.reversedAt == null || isValidTimestamp(data.reversedAt)) &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidPayment(data) {
+      return data.shopId is string && data.shopId.size() >= 1 && data.shopId.size() <= 128 &&
+             data.customerId is string && isValidId(data.customerId) &&
+             data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 100 &&
+             data.amountPaise is int && data.amountPaise > 0 && data.amountPaise <= 100000000 &&
+             data.method in ['CASH', 'UPI', 'OTHER'] &&
+             data.receiptNumber is string && data.receiptNumber.size() >= 3 && data.receiptNumber.size() <= 64 &&
+             (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 300)) &&
+             (!('transactionId' in data) || data.transactionId == null || isValidId(data.transactionId)) &&
+             (!('balanceBeforePaise' in data) || data.balanceBeforePaise == null || (data.balanceBeforePaise is int && data.balanceBeforePaise >= 0)) &&
+             (!('balanceAfterPaise' in data) || data.balanceAfterPaise == null || (data.balanceAfterPaise is int && data.balanceAfterPaise >= 0)) &&
+             data.status in ['CONFIRMED', 'REVERSED'] &&
+             data.receivedByUid is string && data.receivedByUid.size() >= 1 && data.receivedByUid.size() <= 128 &&
+             data.receivedByName is string && data.receivedByName.size() >= 1 && data.receivedByName.size() <= 100 &&
+             (!('reversedByUid' in data) || data.reversedByUid == null || (data.reversedByUid is string && data.reversedByUid.size() <= 128)) &&
+             (!('reversedByName' in data) || data.reversedByName == null || (data.reversedByName is string && data.reversedByName.size() <= 100)) &&
+             (!('reversalReason' in data) || data.reversalReason == null || (data.reversalReason is string && data.reversalReason.size() >= 1 && data.reversalReason.size() <= 250)) &&
+             (!('reversedAt' in data) || data.reversedAt == null || isValidTimestamp(data.reversedAt)) &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidNotification(data) {
+      return data.shopId is string && data.shopId.size() >= 1 && data.shopId.size() <= 128 &&
+             data.type is string && data.type.size() >= 1 && data.type.size() <= 40 &&
+             data.actorUid is string && data.actorUid.size() >= 1 && data.actorUid.size() <= 128 &&
+             data.actorName is string && data.actorName.size() >= 1 && data.actorName.size() <= 100 &&
+             (!('customerId' in data) || data.customerId == null || (data.customerId is string && data.customerId.size() <= 128)) &&
+             (!('customerName' in data) || data.customerName == null || (data.customerName is string && data.customerName.size() <= 100)) &&
+             (!('amountPaise' in data) || data.amountPaise == null || (data.amountPaise is int && data.amountPaise >= 0)) &&
+             (!('balanceAfterPaise' in data) || data.balanceAfterPaise == null || (data.balanceAfterPaise is int && data.balanceAfterPaise >= 0)) &&
+             data.messageEn is string && data.messageEn.size() >= 1 && data.messageEn.size() <= 300 &&
+             data.messageTe is string && data.messageTe.size() >= 1 && data.messageTe.size() <= 400 &&
+             data.readByUids is list && data.readByUids.size() <= 3 &&
+             (data.readByUids.size() == 0 || data.readByUids[0] is string) &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidActivityLog(data) {
+      return data.shopId is string && data.shopId.size() >= 1 && data.shopId.size() <= 128 &&
+             data.action is string && data.action.size() >= 1 && data.action.size() <= 40 &&
+             data.actorUid is string && data.actorUid.size() >= 1 && data.actorUid.size() <= 128 &&
+             data.actorName is string && data.actorName.size() >= 1 && data.actorName.size() <= 100 &&
+             (!('customerId' in data) || data.customerId == null || (data.customerId is string && data.customerId.size() <= 128)) &&
+             (!('customerName' in data) || data.customerName == null || (data.customerName is string && data.customerName.size() <= 100)) &&
+             (!('amountPaise' in data) || data.amountPaise == null || (data.amountPaise is int && data.amountPaise >= 0)) &&
+             data.summaryEn is string && data.summaryEn.size() >= 1 && data.summaryEn.size() <= 300 &&
+             data.summaryTe is string && data.summaryTe.size() >= 1 && data.summaryTe.size() <= 400 &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    // --- COLLECTION RULES ---
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().uid == request.auth.uid &&
+                       incoming().keys().hasAll(['uid', 'name', 'email', 'language', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['uid', 'name', 'email', 'language', 'activeShopId', 'createdAt', 'updatedAt']) &&
+                       isValidUser(incoming());
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().uid == existing().uid &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidUser(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['name', 'language', 'activeShopId', 'updatedAt']);
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+    }
+
+    match /shops/{shopId} {
+      allow get: if isSignedIn() && isValidId(shopId) &&
+                    ((request.auth.uid in existing().memberUids) || isInvitedEmail(existing()));
+      allow list: if isSignedIn() &&
+                     ((request.auth.uid in existing().memberUids) || isInvitedEmail(existing()));
+      allow create: if isSignedIn() &&
+                       isValidId(shopId) &&
+                       incoming().mainOwnerUid == request.auth.uid &&
+                       incoming().memberUids.size() == 1 &&
+                       incoming().memberUids[0] == request.auth.uid &&
+                       incoming().keys().hasAll(['name', 'mainOwnerUid', 'mainOwnerEmail', 'memberUids', 'invitedEmails', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['name', 'mainOwnerUid', 'mainOwnerEmail', 'memberUids', 'invitedEmails', 'createdAt', 'updatedAt']) &&
+                       isValidShop(incoming());
+      allow update: if isSignedIn() &&
+                       isValidId(shopId) &&
+                       isValidShop(incoming()) &&
+                       incoming().mainOwnerUid == existing().mainOwnerUid &&
+                       incoming().mainOwnerEmail == existing().mainOwnerEmail &&
+                       incoming().createdAt == existing().createdAt && (
+                         (
+                           existing().mainOwnerUid == request.auth.uid &&
+                           (existing().mainOwnerUid in incoming().memberUids) &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['name', 'invitedEmails', 'memberUids', 'updatedAt'])
+                         ) || (
+                           isInvitedEmail(existing()) &&
+                           existing().memberUids.size() < 3 &&
+                           !(request.auth.uid in existing().memberUids) &&
+                           incoming().memberUids.size() == existing().memberUids.size() + 1 &&
+                           (request.auth.uid in incoming().memberUids) &&
+                           incoming().memberUids.hasAll(existing().memberUids) &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'invitedEmails', 'updatedAt'])
+                         )
+                       );
+      allow delete: if false;
+
+      match /members/{memberUid} {
+        allow get: if isSignedIn() && isValidId(memberUid) && (isShopMember(shopId) || isShopMainAdmin(shopId) || (request.auth.uid == memberUid && isInvitedToShop(shopId)));
+        allow list: if isSignedIn() && (isShopMember(shopId) || isShopMainAdmin(shopId));
+        allow create: if isSignedIn() &&
+                         isValidId(memberUid) &&
+                         request.auth.uid == memberUid &&
+                         incoming().uid == request.auth.uid &&
+                         incoming().shopId == shopId &&
+                         incoming().keys().hasAll(['shopId', 'uid', 'name', 'email', 'role', 'active', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['shopId', 'uid', 'name', 'email', 'phone', 'role', 'active', 'createdAt', 'updatedAt']) &&
+                         isValidMember(incoming()) &&
+                         (
+                           (isShopMainAdminOrCreating(shopId) && incoming().role == 'MAIN_ADMIN' && incoming().active == true) ||
+                           (isInvitedToShop(shopId) && incoming().role in ['OWNER_2', 'OWNER_3'] && incoming().active == true)
+                         );
+        allow update: if isSignedIn() &&
+                         isValidId(memberUid) &&
+                         isValidMember(incoming()) &&
+                         incoming().shopId == existing().shopId &&
+                         incoming().uid == existing().uid &&
+                         incoming().createdAt == existing().createdAt && (
+                           (
+                             isShopMainAdmin(shopId) &&
+                             memberUid != request.auth.uid &&
+                             incoming().role in ['OWNER_2', 'OWNER_3'] &&
+                             incoming().diff(existing()).affectedKeys().hasOnly(['active', 'role', 'updatedAt'])
+                           ) || (
+                             request.auth.uid == memberUid &&
+                             isShopMember(shopId) &&
+                             incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phone', 'updatedAt'])
+                           ) || (
+                             request.auth.uid == memberUid &&
+                             isInvitedToShop(shopId) &&
+                             incoming().active == true &&
+                             incoming().diff(existing()).affectedKeys().hasOnly(['name', 'active', 'updatedAt'])
+                           )
+                         );
+        allow delete: if false;
+      }
+
+      match /customers/{customerId} {
+        allow get: if isSignedIn() && isValidId(customerId) && isShopMember(shopId);
+        allow list: if isSignedIn() && isShopMember(shopId);
+        allow create: if isSignedIn() &&
+                         isValidId(customerId) &&
+                         isShopMember(shopId) &&
+                         incoming().shopId == shopId &&
+                         incoming().createdByUid == request.auth.uid &&
+                         incoming().totalCreditPaise == 0 &&
+                         incoming().totalPaidPaise == 0 &&
+                         incoming().outstandingBalancePaise == incoming().openingBalancePaise &&
+                         incoming().keys().hasAll(['shopId', 'name', 'phone', 'openingBalancePaise', 'totalCreditPaise', 'totalPaidPaise', 'outstandingBalancePaise', 'createdByUid', 'createdByName', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['shopId', 'name', 'phone', 'address', 'lastTransactionId', 'openingBalancePaise', 'totalCreditPaise', 'totalPaidPaise', 'outstandingBalancePaise', 'createdByUid', 'createdByName', 'createdAt', 'updatedAt']) &&
+                         isValidCustomer(incoming());
+        allow update: if isSignedIn() &&
+                         isValidId(customerId) &&
+                         isShopMember(shopId) &&
+                         isValidCustomer(incoming()) &&
+                         incoming().shopId == existing().shopId &&
+                         incoming().createdByUid == existing().createdByUid &&
+                         incoming().openingBalancePaise == existing().openingBalancePaise &&
+                         incoming().createdAt == existing().createdAt && (
+                           incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phone', 'address', 'updatedAt']) ||
+                           (
+                             incoming().diff(existing()).affectedKeys().hasOnly(['totalCreditPaise', 'totalPaidPaise', 'outstandingBalancePaise', 'lastTransactionId', 'updatedAt']) &&
+                             incoming().lastTransactionId is string &&
+                             existsAfter(/databases/$(database)/documents/shops/$(shopId)/transactions/$(incoming().lastTransactionId))
+                           )
+                         );
+        allow delete: if false;
+      }
+
+      match /transactions/{transactionId} {
+        allow get: if isSignedIn() && isValidId(transactionId) && isShopMember(shopId);
+        allow list: if isSignedIn() && isShopMember(shopId);
+        allow create: if isSignedIn() &&
+                         isValidId(transactionId) &&
+                         isShopMember(shopId) &&
+                         incoming().shopId == shopId &&
+                         incoming().createdByUid == request.auth.uid &&
+                         incoming().status == 'CONFIRMED' &&
+                         incoming().keys().hasAll(['shopId', 'customerId', 'customerName', 'type', 'amountPaise', 'description', 'balanceAfterPaise', 'status', 'createdByUid', 'createdByName', 'createdAt']) &&
+                         incoming().keys().hasOnly(['shopId', 'customerId', 'customerName', 'type', 'amountPaise', 'description', 'quantity', 'notes', 'paymentMethod', 'paymentId', 'relatedTransactionId', 'balanceAfterPaise', 'status', 'createdByUid', 'createdByName', 'createdAt']) &&
+                         isValidTransaction(incoming()) &&
+                         exists(/databases/$(database)/documents/shops/$(shopId)/customers/$(incoming().customerId));
+        allow update: if isSignedIn() &&
+                         isValidId(transactionId) &&
+                         isShopMember(shopId) &&
+                         isValidTransaction(incoming()) &&
+                         incoming().shopId == existing().shopId &&
+                         incoming().customerId == existing().customerId &&
+                         incoming().type == existing().type &&
+                         incoming().amountPaise == existing().amountPaise &&
+                         incoming().createdByUid == existing().createdByUid &&
+                         incoming().createdAt == existing().createdAt &&
+                         existing().status == 'CONFIRMED' &&
+                         incoming().status == 'REVERSED' &&
+                         incoming().reversedByUid == request.auth.uid &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'reversedAt', 'reversedByUid', 'reversedByName', 'reversalReason']);
+        allow delete: if false;
+      }
+
+      match /payments/{paymentId} {
+        allow get: if isSignedIn() && isValidId(paymentId) && isShopMember(shopId);
+        allow list: if isSignedIn() && isShopMember(shopId);
+        allow create: if isSignedIn() &&
+                         isValidId(paymentId) &&
+                         isShopMember(shopId) &&
+                         incoming().shopId == shopId &&
+                         incoming().receivedByUid == request.auth.uid &&
+                         incoming().status == 'CONFIRMED' &&
+                         incoming().keys().hasAll(['shopId', 'customerId', 'customerName', 'amountPaise', 'method', 'receiptNumber', 'status', 'receivedByUid', 'receivedByName', 'createdAt']) &&
+                         incoming().keys().hasOnly(['shopId', 'customerId', 'customerName', 'amountPaise', 'method', 'receiptNumber', 'notes', 'transactionId', 'balanceBeforePaise', 'balanceAfterPaise', 'status', 'receivedByUid', 'receivedByName', 'createdAt']) &&
+                         isValidPayment(incoming()) &&
+                         exists(/databases/$(database)/documents/shops/$(shopId)/customers/$(incoming().customerId));
+        allow update: if isSignedIn() &&
+                         isValidId(paymentId) &&
+                         isShopMember(shopId) &&
+                         isValidPayment(incoming()) &&
+                         incoming().shopId == existing().shopId &&
+                         incoming().customerId == existing().customerId &&
+                         incoming().amountPaise == existing().amountPaise &&
+                         incoming().receivedByUid == existing().receivedByUid &&
+                         incoming().createdAt == existing().createdAt &&
+                         existing().status == 'CONFIRMED' &&
+                         incoming().status == 'REVERSED' &&
+                         incoming().reversedByUid == request.auth.uid &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'reversedAt', 'reversedByUid', 'reversedByName', 'reversalReason']);
+        allow delete: if false;
+      }
+
+      match /notifications/{notificationId} {
+        allow get: if isSignedIn() && isValidId(notificationId) && isShopMember(shopId);
+        allow list: if isSignedIn() && isShopMember(shopId);
+        allow create: if isSignedIn() &&
+                         isValidId(notificationId) &&
+                         isShopMemberOrJoining(shopId) &&
+                         incoming().shopId == shopId &&
+                         incoming().actorUid == request.auth.uid &&
+                         incoming().keys().hasAll(['shopId', 'type', 'actorUid', 'actorName', 'messageEn', 'messageTe', 'readByUids', 'createdAt']) &&
+                         incoming().keys().hasOnly(['shopId', 'type', 'actorUid', 'actorName', 'customerId', 'customerName', 'amountPaise', 'balanceAfterPaise', 'messageEn', 'messageTe', 'readByUids', 'createdAt']) &&
+                         isValidNotification(incoming());
+        allow update: if isSignedIn() &&
+                         isValidId(notificationId) &&
+                         isShopMember(shopId) &&
+                         isValidNotification(incoming()) &&
+                         incoming().shopId == existing().shopId &&
+                         incoming().actorUid == existing().actorUid &&
+                         incoming().createdAt == existing().createdAt &&
+                         (request.auth.uid in incoming().readByUids) &&
+                         incoming().readByUids.hasAll(existing().readByUids) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['readByUids']);
+        allow delete: if false;
+      }
+
+      match /activityLogs/{logId} {
+        allow get: if isSignedIn() && isValidId(logId) && isShopMember(shopId);
+        allow list: if isSignedIn() && isShopMember(shopId);
+        allow create: if isSignedIn() &&
+                         isValidId(logId) &&
+                         isShopMemberOrJoining(shopId) &&
+                         incoming().shopId == shopId &&
+                         incoming().actorUid == request.auth.uid &&
+                         incoming().keys().hasAll(['shopId', 'action', 'actorUid', 'actorName', 'summaryEn', 'summaryTe', 'createdAt']) &&
+                         incoming().keys().hasOnly(['shopId', 'action', 'actorUid', 'actorName', 'customerId', 'customerName', 'amountPaise', 'summaryEn', 'summaryTe', 'createdAt']) &&
+                         isValidActivityLog(incoming());
+        allow update, delete: if false;
+      }
+    }
+  }
+}

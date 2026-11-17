@@ -1,0 +1,242 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated shop owner profile and device language preference.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "language": { "type": "string", "enum": ["en", "te"] },
+        "activeShopId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "email", "language", "createdAt", "updatedAt"]
+    },
+    "Shop": {
+      "title": "Shop",
+      "description": "Shared Kirana shop ledger supporting up to 3 authorized owners.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "mainOwnerUid": { "type": "string" },
+        "mainOwnerEmail": { "type": "string" },
+        "memberUids": { "type": "array" },
+        "invitedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "mainOwnerUid", "mainOwnerEmail", "memberUids", "invitedEmails", "createdAt", "updatedAt"]
+    },
+    "ShopMember": {
+      "title": "ShopMember",
+      "description": "Authorized shop owner membership record with role and active status.",
+      "type": "object",
+      "properties": {
+        "shopId": { "type": "string" },
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string", "enum": ["MAIN_ADMIN", "OWNER_2", "OWNER_3"] },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["shopId", "uid", "name", "email", "role", "active", "createdAt", "updatedAt"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Kirana shop customer khata account with exact integer paise balances.",
+      "type": "object",
+      "properties": {
+        "shopId": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "openingBalancePaise": { "type": "integer" },
+        "totalCreditPaise": { "type": "integer" },
+        "totalPaidPaise": { "type": "integer" },
+        "outstandingBalancePaise": { "type": "integer" },
+        "lastTransactionId": { "type": "string" },
+        "createdByUid": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "shopId",
+        "name",
+        "phone",
+        "openingBalancePaise",
+        "totalCreditPaise",
+        "totalPaidPaise",
+        "outstandingBalancePaise",
+        "createdByUid",
+        "createdByName",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "LedgerTransaction": {
+      "title": "LedgerTransaction",
+      "description": "Append-only credit, payment, or reversal entry in a customer khata.",
+      "type": "object",
+      "properties": {
+        "shopId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "type": { "type": "string", "enum": ["CREDIT", "PAYMENT", "REVERSAL"] },
+        "amountPaise": { "type": "integer" },
+        "description": { "type": "string" },
+        "quantity": { "type": "string" },
+        "notes": { "type": "string" },
+        "paymentMethod": { "type": "string", "enum": ["CASH", "UPI", "OTHER"] },
+        "paymentId": { "type": "string" },
+        "relatedTransactionId": { "type": "string" },
+        "balanceAfterPaise": { "type": "integer" },
+        "status": { "type": "string", "enum": ["CONFIRMED", "REVERSED"] },
+        "createdByUid": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "reversedByUid": { "type": "string" },
+        "reversedByName": { "type": "string" },
+        "reversalReason": { "type": "string" },
+        "reversedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "shopId",
+        "customerId",
+        "customerName",
+        "type",
+        "amountPaise",
+        "description",
+        "balanceAfterPaise",
+        "status",
+        "createdByUid",
+        "createdByName",
+        "createdAt"
+      ]
+    },
+    "PaymentRecord": {
+      "title": "PaymentRecord",
+      "description": "Immutable payment confirmation receipt record.",
+      "type": "object",
+      "properties": {
+        "shopId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "amountPaise": { "type": "integer" },
+        "method": { "type": "string", "enum": ["CASH", "UPI", "OTHER"] },
+        "receiptNumber": { "type": "string" },
+        "notes": { "type": "string" },
+        "transactionId": { "type": "string" },
+        "balanceBeforePaise": { "type": "integer" },
+        "balanceAfterPaise": { "type": "integer" },
+        "status": { "type": "string", "enum": ["CONFIRMED", "REVERSED"] },
+        "receivedByUid": { "type": "string" },
+        "receivedByName": { "type": "string" },
+        "reversedByUid": { "type": "string" },
+        "reversedByName": { "type": "string" },
+        "reversalReason": { "type": "string" },
+        "reversedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "shopId",
+        "customerId",
+        "customerName",
+        "amountPaise",
+        "method",
+        "receiptNumber",
+        "status",
+        "receivedByUid",
+        "receivedByName",
+        "createdAt"
+      ]
+    },
+    "ShopNotification": {
+      "title": "ShopNotification",
+      "description": "Bilingual real-time notification broadcast to shop owners.",
+      "type": "object",
+      "properties": {
+        "shopId": { "type": "string" },
+        "type": { "type": "string" },
+        "actorUid": { "type": "string" },
+        "actorName": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "amountPaise": { "type": "integer" },
+        "balanceAfterPaise": { "type": "integer" },
+        "messageEn": { "type": "string" },
+        "messageTe": { "type": "string" },
+        "readByUids": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "shopId",
+        "type",
+        "actorUid",
+        "actorName",
+        "messageEn",
+        "messageTe",
+        "readByUids",
+        "createdAt"
+      ]
+    },
+    "ActivityLog": {
+      "title": "ActivityLog",
+      "description": "Immutable chronological audit log of all shop owner operations.",
+      "type": "object",
+      "properties": {
+        "shopId": { "type": "string" },
+        "action": { "type": "string" },
+        "actorUid": { "type": "string" },
+        "actorName": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "amountPaise": { "type": "integer" },
+        "summaryEn": { "type": "string" },
+        "summaryTe": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["shopId", "action", "actorUid", "actorName", "summaryEn", "summaryTe", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Per-user profile and language preferences."
+    },
+    "/shops/{shopId}": {
+      "schema": { "$ref": "#/entities/Shop" },
+      "description": "Shared Kirana shop configuration and up to 3 active member UIDs."
+    },
+    "/shops/{shopId}/members/{memberUid}": {
+      "schema": { "$ref": "#/entities/ShopMember" },
+      "description": "Authorized owner roles and active/deactivated status."
+    },
+    "/shops/{shopId}/customers/{customerId}": {
+      "schema": { "$ref": "#/entities/Customer" },
+      "description": "Customers belonging to the shared Kirana shop."
+    },
+    "/shops/{shopId}/transactions/{transactionId}": {
+      "schema": { "$ref": "#/entities/LedgerTransaction" },
+      "description": "Append-only credit, payment, and reversal ledger entries."
+    },
+    "/shops/{shopId}/payments/{paymentId}": {
+      "schema": { "$ref": "#/entities/PaymentRecord" },
+      "description": "Immutable payment confirmation receipts."
+    },
+    "/shops/{shopId}/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/ShopNotification" },
+      "description": "Real-time notifications with per-owner read tracking."
+    },
+    "/shops/{shopId}/activityLogs/{logId}": {
+      "schema": { "$ref": "#/entities/ActivityLog" },
+      "description": "Immutable audit trail of all ledger actions."
+    }
+  }
+}
